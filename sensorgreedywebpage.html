@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Greedy Sensor Placement — Plant Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111318;
+    --surface2: #181c22;
+    --border: #252a33;
+    --border2: #2e3440;
+    --green: #00e5a0;
+    --green-dim: #00b07a;
+    --green-glow: rgba(0,229,160,0.12);
+    --blue: #3b9eff;
+    --blue-dim: #1a6fc4;
+    --blue-glow: rgba(59,158,255,0.12);
+    --amber: #ffb340;
+    --red: #ff4d4d;
+    --text: #e8eaf0;
+    --text2: #8892a4;
+    --text3: #4a5568;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Space Grotesk', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* HEADER */
+  header {
+    padding: 40px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: var(--green-glow);
+    color: var(--green);
+    border: 1px solid rgba(0,229,160,0.2);
+    display: inline-block;
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    font-size: clamp(26px, 4vw, 42px);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  h1 span { color: var(--green); }
+
+  .header-desc {
+    font-size: 14px;
+    color: var(--text2);
+    margin-top: 8px;
+    font-weight: 300;
+    max-width: 480px;
+    line-height: 1.6;
+  }
+
+  .header-stats {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 90px;
+  }
+
+  .stat-chip .sv {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--green);
+    display: block;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-chip .sl {
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* LAYOUT */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* PANEL */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+  }
+
+  .panel-header .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+
+  .panel-header h3 {
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .panel-body { padding: 18px; }
+
+  /* FORM CONTROLS */
+  .field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  input[type=text] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text);
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type=text]:focus {
+    border-color: var(--green-dim);
+    box-shadow: 0 0 0 3px var(--green-glow);
+  }
+
+  input[type=text]::placeholder { color: var(--text3); }
+
+  .btn {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { border-color: var(--green-dim); color: var(--green); background: var(--green-glow); }
+
+  .btn.primary {
+    background: var(--green);
+    color: #000;
+    border-color: var(--green);
+    font-weight: 600;
+  }
+
+  .btn.primary:hover { background: var(--green-dim); border-color: var(--green-dim); color: #000; }
+
+  .btn.example {
+    width: 100%;
+    margin-top: 4px;
+    text-align: center;
+    color: var(--text3);
+    font-size: 11px;
+    padding: 6px;
+  }
+
+  /* PILL LISTS */
+  .pill-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; min-height: 24px; }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+  }
+
+  .pill .rm {
+    cursor: pointer;
+    color: var(--text3);
+    font-size: 10px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+
+  .pill .rm:hover { color: var(--red); }
+
+  .section-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 14px 0;
+  }
+
+  .run-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    margin-top: 8px;
+  }
+
+  /* GRAPH SECTION */
+  .graph-section { display: flex; flex-direction: column; gap: 16px; }
+
+  .graphs-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 600px) { .graphs-row { grid-template-columns: 1fr; } }
+
+  .graph-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .graph-card-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .graph-card-header .title {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text2);
+  }
+
+  .graph-card-header .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+
+  .tag.input-tag { background: rgba(59,158,255,0.1); color: var(--blue); border: 1px solid rgba(59,158,255,0.2); }
+  .tag.output-tag { background: var(--green-glow); color: var(--green); border: 1px solid rgba(0,229,160,0.2); }
+
+  canvas {
+    display: block;
+    width: 100%;
+    background: transparent;
+  }
+
+  /* LEGEND */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .leg-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* RESULTS */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 700px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
+
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .metric-card .ml {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-bottom: 6px;
+  }
+
+  .metric-card .mv {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .metric-card .mv.green { color: var(--green); }
+  .metric-card .mv.amber { color: var(--amber); }
+
+  /* STEPS */
+  .steps-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .steps-body { padding: 14px 18px; }
+
+  .step-row {
+    display: flex;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+
+  .step-row:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    min-width: 20px;
+    padding-top: 2px;
+  }
+
+  .step-content { flex: 1; }
+
+  .step-node {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 4px;
+  }
+
+  .step-node::before { content: '→ '; color: var(--text3); }
+
+  .step-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+
+  .step-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+
+  .step-tag.sensor { background: var(--green-glow); color: var(--green); border: 1px solid rgba(0,229,160,0.2); }
+  .step-tag.covered { background: var(--blue-glow); color: var(--blue); border: 1px solid rgba(59,158,255,0.2); }
+  .step-tag.remain { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+
+  .step-meta {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-top: 4px;
+  }
+
+  /* EMPTY STATE */
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 2;
+  }
+
+  .empty .icon { font-size: 32px; margin-bottom: 12px; display: block; opacity: 0.4; }
+
+  /* COST TABLE */
+  .cost-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .cost-row:last-child { border-bottom: none; }
+  .cost-row .cl { color: var(--text2); }
+  .cost-row .cv { color: var(--text); font-weight: 500; }
+  .cost-row .cv.green { color: var(--green); }
+  .cost-row .cv.red { color: var(--red); text-decoration: line-through; opacity: 0.6; }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .anim { animation: fadeUp 0.4s ease both; }
+  .anim-d1 { animation-delay: 0.05s; }
+  .anim-d2 { animation-delay: 0.1s; }
+  .anim-d3 { animation-delay: 0.15s; }
+
+  footer {
+    text-align: center;
+    padding: 40px 0 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div>
+        <div class="badge">DSA PROJECT — I&amp;C ENGINEERING</div>
+        <h1>Greedy <span>Sensor</span><br>Placement</h1>
+        <p class="header-desc">Minimum dominating set algorithm for optimal sensor coverage in industrial plant networks. Build your plant graph and watch the greedy algorithm find the minimum sensor set.</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-chip">
+          <span class="sv" id="stat-nodes">0</span>
+          <span class="sl">Nodes</span>
+        </div>
+        <div class="stat-chip">
+          <span class="sv" id="stat-edges">0</span>
+          <span class="sl">Edges</span>
+        </div>
+        <div class="stat-chip">
+          <span class="sv" id="stat-sensors">—</span>
+          <span class="sl">Sensors</span>
+        </div>
+        <div class="stat-chip">
+          <span class="sv" id="stat-saved">—</span>
+          <span class="sl">Saved</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- LEFT: Controls -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="dot"></div>
+          <h3>Build Plant Graph</h3>
+        </div>
+        <div class="panel-body">
+          <label class="field-label">Add location (node)</label>
+          <div class="input-row">
+            <input type="text" id="nodeInput" placeholder="e.g. Boiler" onkeydown="if(event.key==='Enter')addNode()">
+            <button class="btn" onclick="addNode()">+ Add</button>
+          </div>
+          <div class="pill-list" id="nodeList"><span style="font-size:11px;color:var(--text3);font-family:var(--mono)">No nodes yet...</span></div>
+
+          <hr class="section-sep">
+
+          <label class="field-label">Add pipeline (edge)</label>
+          <div class="input-row">
+            <input type="text" id="edgeA" placeholder="From" onkeydown="if(event.key==='Enter')document.getElementById('edgeB').focus()">
+            <input type="text" id="edgeB" placeholder="To" onkeydown="if(event.key==='Enter')addEdge()">
+            <button class="btn" onclick="addEdge()">+ Add</button>
+          </div>
+          <div class="pill-list" id="edgeList"><span style="font-size:11px;color:var(--text3);font-family:var(--mono)">No edges yet...</span></div>
+
+          <hr class="section-sep">
+
+          <button class="btn primary run-btn" onclick="runGreedy()">▶ Run Greedy Algorithm</button>
+          <button class="btn example" onclick="loadExample()">Load 7-node example →</button>
+          <button class="btn example" style="margin-top:2px" onclick="clearAll()">Clear all</button>
+        </div>
+      </div>
+
+      <!-- Cost breakdown (shows after run) -->
+      <div class="panel" id="costPanel" style="margin-top:16px;display:none">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></div>
+          <h3>Cost Analysis</h3>
+        </div>
+        <div class="panel-body" id="costBody"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Graphs + Results -->
+    <div class="graph-section">
+
+      <div class="graphs-row">
+        <div class="graph-card">
+          <div class="graph-card-header">
+            <span class="title">Input Graph</span>
+            <span class="tag input-tag">BEFORE</span>
+          </div>
+          <canvas id="cvInput" width="500" height="320"></canvas>
+          <div class="legend">
+            <div class="leg-item"><div class="leg-dot" style="background:var(--text3)"></div>Location node</div>
+            <div class="leg-item"><div class="leg-dot" style="background:var(--border2);border:1px solid var(--text3)"></div>Pipeline</div>
+          </div>
+        </div>
+
+        <div class="graph-card">
+          <div class="graph-card-header">
+            <span class="title">Output Graph</span>
+            <span class="tag output-tag">AFTER GREEDY</span>
+          </div>
+          <canvas id="cvOutput" width="500" height="320"></canvas>
+          <div class="legend">
+            <div class="leg-item"><div class="leg-dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></div>Sensor placed</div>
+            <div class="leg-item"><div class="leg-dot" style="background:var(--blue)"></div>Covered node</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics (after run) -->
+      <div id="metricsSection" style="display:none">
+        <div class="metrics-row anim">
+          <div class="metric-card">
+            <div class="ml">Locations</div>
+            <div class="mv" id="m-nodes">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="ml">Sensors placed</div>
+            <div class="mv green" id="m-sensors">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="ml">Coverage</div>
+            <div class="mv green">100%</div>
+          </div>
+          <div class="metric-card">
+            <div class="ml">Efficiency</div>
+            <div class="mv amber" id="m-eff">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steps log -->
+      <div class="steps-panel" id="stepsPanel">
+        <div class="panel-header">
+          <div class="dot" style="background:var(--blue);box-shadow:0 0 6px var(--blue)"></div>
+          <h3>Algorithm Steps</h3>
+        </div>
+        <div class="steps-body" id="stepsBody">
+          <div class="empty">
+            <span class="icon">◎</span>
+            Add nodes and edges, then run the algorithm<br>to see step-by-step greedy decisions here.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>GREEDY OPTIMAL SENSOR PLACEMENT &nbsp;·&nbsp; INSTRUMENTATION &amp; CONTROL ENGINEERING &nbsp;·&nbsp; DSA PROJECT</footer>
+
+<script>
+let nodes = [], edges = [];
+
+function updateStats() {
+  document.getElementById('stat-nodes').textContent = nodes.length;
+  document.getElementById('stat-edges').textContent = edges.length;
+}
+
+function addNode() {
+  const v = document.getElementById('nodeInput').value.trim();
+  if (!v || nodes.includes(v)) return;
+  nodes.push(v);
+  document.getElementById('nodeInput').value = '';
+  renderNodeList();
+  updateStats();
+  drawInputGraph();
+}
+
+function removeNode(n) {
+  nodes = nodes.filter(x => x !== n);
+  edges = edges.filter(e => e[0] !== n && e[1] !== n);
+  renderNodeList(); renderEdgeList(); updateStats(); drawInputGraph();
+}
+
+function addEdge() {
+  const a = document.getElementById('edgeA').value.trim();
+  const b = document.getElementById('edgeB').value.trim();
+  if (!a || !b || a === b) return;
+  if (!nodes.includes(a) || !nodes.includes(b)) { alert('Both nodes must exist first.'); return; }
+  if (edges.some(e => (e[0]===a&&e[1]===b)||(e[0]===b&&e[1]===a))) return;
+  edges.push([a, b]);
+  document.getElementById('edgeA').value = '';
+  document.getElementById('edgeB').value = '';
+  renderEdgeList(); updateStats(); drawInputGraph();
+}
+
+function removeEdge(i) { edges.splice(i, 1); renderEdgeList(); updateStats(); drawInputGraph(); }
+
+function clearAll() {
+  nodes = []; edges = [];
+  renderNodeList(); renderEdgeList(); updateStats();
+  drawInputGraph();
+  clearOutput();
+}
+
+function loadExample() {
+  nodes = ['Boiler','JunctionA','Tank','Pump','JunctionB','Valve','ControlRoom'];
+  edges = [['Boiler','JunctionA'],['JunctionA','Tank'],['JunctionA','JunctionB'],
+           ['Pump','JunctionB'],['JunctionB','Valve'],['JunctionB','ControlRoom'],['Boiler','Pump']];
+  renderNodeList(); renderEdgeList(); updateStats(); drawInputGraph();
+}
+
+function renderNodeList() {
+  const el = document.getElementById('nodeList');
+  if (nodes.length === 0) { el.innerHTML = '<span style="font-size:11px;color:var(--text3);font-family:var(--mono)">No nodes yet...</span>'; return; }
+  el.innerHTML = nodes.map(n => `<span class="pill">${n}<span class="rm" onclick="removeNode('${n}')">✕</span></span>`).join('');
+}
+
+function renderEdgeList() {
+  const el = document.getElementById('edgeList');
+  if (edges.length === 0) { el.innerHTML = '<span style="font-size:11px;color:var(--text3);font-family:var(--mono)">No edges yet...</span>'; return; }
+  el.innerHTML = edges.map((e,i) => `<span class="pill">${e[0]} ↔ ${e[1]}<span class="rm" onclick="removeEdge(${i})">✕</span></span>`).join('');
+}
+
+function getAdj() {
+  const adj = {};
+  nodes.forEach(n => adj[n] = []);
+  edges.forEach(([a,b]) => { adj[a].push(b); adj[b].push(a); });
+  return adj;
+}
+
+function layoutNodes(W, H) {
+  const pos = {};
+  const cx = W / 2, cy = H / 2;
+  const r = nodes.length === 1 ? 0 : Math.min(W, H) * 0.36;
+  nodes.forEach((name, i) => {
+    const angle = (2 * Math.PI * i / nodes.length) - Math.PI / 2;
+    pos[name] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  });
+  return pos;
+}
+
+function drawGraph(id, sensorSet, coveredSet) {
+  const cv = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 500, H = 320;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.height = H + 'px';
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  if (nodes.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.font = '12px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('No nodes to display', W/2, H/2);
+    return;
+  }
+
+  const pos = layoutNodes(W, H);
+
+  // Draw edges
+  edges.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(pos[a].x, pos[a].y);
+    ctx.lineTo(pos[b].x, pos[b].y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const { x, y } = pos[n];
+    const isSensor = sensorSet && sensorSet.has(n);
+    const isCovered = coveredSet && coveredSet.has(n);
+
+    const radius = isSensor ? 20 : 16;
+
+    // Glow for sensor
+    if (isSensor) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 8, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(0,229,160,0.1)';
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+
+    if (isSensor) {
+      ctx.fillStyle = '#00e5a0';
+    } else if (isCovered) {
+      ctx.fillStyle = '#3b9eff';
+    } else {
+      ctx.fillStyle = '#1a1e26';
+    }
+    ctx.fill();
+
+    ctx.strokeStyle = isSensor ? '#00b07a' : isCovered ? '#1a6fc4' : '#2e3440';
+    ctx.lineWidth = isSensor ? 2 : 1;
+    ctx.stroke();
+
+    // Label
+    const label = n.length > 10 ? n.slice(0, 9) + '…' : n;
+    ctx.fillStyle = isSensor ? '#002211' : isCovered ? '#001133' : '#8892a4';
+    ctx.font = `${isSensor ? '600' : '400'} 11px IBM Plex Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+
+    // S badge
+    if (isSensor) {
+      ctx.beginPath();
+      ctx.arc(x + radius - 2, y - radius + 2, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = '#002211';
+      ctx.fill();
+      ctx.fillStyle = '#00e5a0';
+      ctx.font = '700 8px IBM Plex Mono, monospace';
+      ctx.fillText('S', x + radius - 2, y - radius + 2);
+    }
+  });
+}
+
+function drawInputGraph() {
+  drawGraph('cvInput', new Set(), new Set());
+}
+
+function clearOutput() {
+  drawGraph('cvOutput', new Set(), new Set());
+  document.getElementById('stat-sensors').textContent = '—';
+  document.getElementById('stat-saved').textContent = '—';
+  document.getElementById('metricsSection').style.display = 'none';
+  document.getElementById('costPanel').style.display = 'none';
+  document.getElementById('stepsBody').innerHTML = `<div class="empty"><span class="icon">◎</span>Add nodes and edges, then run the algorithm<br>to see step-by-step greedy decisions here.</div>`;
+}
+
+function runGreedy() {
+  if (nodes.length === 0) { alert('Add some nodes first.'); return; }
+  const adj = getAdj();
+  let uncovered = new Set(nodes);
+  const sensors = [], steps = [];
+
+  while (uncovered.size > 0) {
+    let bestNode = '', bestCov = new Set();
+    for (const n of nodes) {
+      const nowCov = new Set([n, ...adj[n]].filter(x => uncovered.has(x)));
+      if (nowCov.size > bestCov.size) { bestNode = n; bestCov = nowCov; }
+    }
+    sensors.push(bestNode);
+    bestCov.forEach(n => uncovered.delete(n));
+    steps.push({ node: bestNode, covered: [...bestCov], remaining: [...uncovered] });
+  }
+
+  const sensorSet = new Set(sensors);
+  const coveredSet = new Set(nodes.filter(n => !sensorSet.has(n)));
+
+  // Update header stats
+  document.getElementById('stat-sensors').textContent = sensors.length;
+  const saving = (nodes.length - sensors.length) * 50000;
+  document.getElementById('stat-saved').textContent = saving >= 1000 ? '₹' + (saving/1000).toFixed(0) + 'k' : '₹' + saving;
+
+  // Draw graphs
+  drawInputGraph();
+  drawGraph('cvOutput', sensorSet, coveredSet);
+
+  // Metrics
+  document.getElementById('m-nodes').textContent = nodes.length;
+  document.getElementById('m-sensors').textContent = sensors.length;
+  document.getElementById('m-eff').textContent = Math.round((1 - sensors.length / nodes.length) * 100) + '%';
+  document.getElementById('metricsSection').style.display = '';
+
+  // Steps
+  document.getElementById('stepsBody').innerHTML = steps.map((s, i) => `
+    <div class="step-row">
+      <div class="step-num">0${i+1}</div>
+      <div class="step-content">
+        <div class="step-node">${s.node}</div>
+        <div class="step-tags">
+          <span class="step-tag sensor">sensor</span>
+          ${s.covered.map(n => `<span class="step-tag covered">${n}</span>`).join('')}
+        </div>
+        <div class="step-meta">
+          covers ${s.covered.length} node${s.covered.length !== 1 ? 's' : ''}
+          ${s.remaining.length ? ` · ${s.remaining.length} remaining` : ' · all covered ✓'}
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Cost
+  const withoutG = nodes.length * 50000;
+  const withG = sensors.length * 50000;
+  document.getElementById('costBody').innerHTML = `
+    <div class="cost-row"><span class="cl">Without greedy (${nodes.length} sensors)</span><span class="cv red">₹${withoutG.toLocaleString()}</span></div>
+    <div class="cost-row"><span class="cl">With greedy (${sensors.length} sensors)</span><span class="cv green">₹${withG.toLocaleString()}</span></div>
+    <div class="cost-row"><span class="cl">Money saved</span><span class="cv green">₹${saving.toLocaleString()}</span></div>
+    <div class="cost-row"><span class="cl">Sensor reduction</span><span class="cv green">${Math.round((1-sensors.length/nodes.length)*100)}%</span></div>
+  `;
+  document.getElementById('costPanel').style.display = '';
+}
+
+// Init
+drawInputGraph();
+drawGraph('cvOutput', new Set(), new Set());
+</script>
+</body>
+</html>
